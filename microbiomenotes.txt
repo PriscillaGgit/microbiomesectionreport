@@ -1,0 +1,38 @@
+#In "microbiomesectionreport" folder
+conda activate qiime2
+
+qiime demux summarize \
+--i-data demux.qza \
+--o-visualization demux.qzv
+
+ qiime dada2 denoise-paired \
+--i-demultiplexed-seqs demux.qza \
+--p-trunc-len-f 190 \
+--p-trim-left-f 23 \
+--p-trunc-len-r 230 \
+--p-trim-left-r 0 \
+--o-representative-sequences rep-seqs.qza \
+--o-table table.qza \
+--o-denoising-stats stats.qza
+
+ qiime feature-table summarize \
+--i-table table.qza \
+--o-visualization table.qzv \
+--m-sample-metadata-file metadata.txt
+qiime feature-table tabulate-seqs \
+--i-data rep-seqs.qza \
+--o-visualization rep-seqs.qzv
+
+wget \
+  -O "gg-13-8-99-515-806-nb-classifier.qza" \
+  "https://data.qiime2.org/classifiers/sklearn-1.4.2/greengenes/gg-13-8-99-515-806-nb-classifier.qza"
+
+qiime feature-classifier classify-sklearn \
+--i-classifier gg-13-8-99-515-806-nb-classifier.qza \
+--i-reads rep-seqs.qza \
+--o-classification taxonomy.qza
+
+qiime metadata tabulate \
+--m-input-file taxonomy.qza \
+--o-visualization taxonomy.qzv
+
