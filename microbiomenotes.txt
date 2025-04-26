@@ -1,10 +1,12 @@
-#In "microbiomesectionreport" folder
+# In "microbiomesectionreport" folder
 conda activate qiime2
 
+# creating a demux file to visualize
 qiime demux summarize \
 --i-data demux.qza \
 --o-visualization demux.qzv
 
+# trimming 
  qiime dada2 denoise-paired \
 --i-demultiplexed-seqs demux.qza \
 --p-trunc-len-f 190 \
@@ -15,6 +17,8 @@ qiime demux summarize \
 --o-table table.qza \
 --o-denoising-stats stats.qza
 
+# Code shows me how many sequences are in each sample. Also What the DNA sequences look like in the rep-seqs.qzv
+ 
  qiime feature-table summarize \
 --i-table table.qza \
 --o-visualization table.qzv \
@@ -23,16 +27,211 @@ qiime feature-table tabulate-seqs \
 --i-data rep-seqs.qza \
 --o-visualization rep-seqs.qzv
 
+#This code downloads a pre-trained Greengenes Naive Bayes classifier for the 515-806 region using wget and saves it as gg-13-8-99-515-806-nb-classifier.qza for taxonomic classification in QIIME 2.
+
 wget \
   -O "gg-13-8-99-515-806-nb-classifier.qza" \
-  "https://data.qiime2.org/classifiers/sklearn-1.4.2/greengenes/gg-13-8-99-515-806-nb-classifier.qza"
+"https://data.qiime2.org/classifiers/sklearn-1.4.2/greengenes/gg-13-8-99-515-806-nb-classifier.qza"
+
+# This code tells QIIME 2 to identify what kinds of microbes are in my samples by comparing their DNA to a known reference database. 
 
 qiime feature-classifier classify-sklearn \
 --i-classifier gg-13-8-99-515-806-nb-classifier.qza \
 --i-reads rep-seqs.qza \
 --o-classification taxonomy.qza
 
+# A visualization chart of the taxons is created here in a qzv file
 qiime metadata tabulate \
 --m-input-file taxonomy.qza \
 --o-visualization taxonomy.qzv
 
+#all the code below will be filtering out unwanted taxa from both the feature table and representative sequences by removing mitochondria, chloroplasts, Archaea, and Eukaryota, leaving only bacterial sequences at the phylum level for downstream microbial community analyses.
+
+qiime taxa filter-table \
+--i-table table.qza \
+--i-taxonomy taxonomy.qza \
+--p-include p__ \
+--p-exclude mitochondria,chloroplast \
+--o-filtered-table table-with-phyla-no-mitochondria-chloroplast.qza
+
+qiime taxa filter-table \
+--i-table table-with-phyla-no-mitochondria-chloroplast.qza \
+--i-taxonomy taxonomy.qza \
+--p-exclude "k__Archaea" \
+--o-filtered-table table-with-phyla-no-mitochondria-chloroplasts-archaea.qza
+
+qiime taxa filter-table \
+--i-table table-with-phyla-no-mitochondria-chloroplasts-archaea.qza \
+--i-taxonomy taxonomy.qza \
+--p-exclude "k__Eukaryota" \
+--o-filtered-table table-with-phyla-no-mitochondria-chloroplasts-archaea-eukaryota.qza
+
+qiime taxa filter-seqs \
+--i-sequences rep-seqs.qza \
+--i-taxonomy taxonomy.qza \
+--p-include p__ \
+--p-exclude mitochondria,chloroplast \
+--o-filtered-sequences rep-seqs-with-phyla-no-mitochondria-chloroplast.qza
+
+qiime taxa filter-seqs \
+--i-sequences rep-seqs-with-phyla-no-mitochondria-chloroplast.qza \
+--i-taxonomy taxonomy.qza \
+--p-exclude "k__Archaea" \
+--o-filtered-sequences rep-seqs-with-phyla-no-mitochondria-chloroplasts-archaea.qza
+
+qiime taxa filter-seqs \
+--i-sequences rep-seqs-with-phyla-no-mitochondria-chloroplasts-archaea.qza \
+--i-taxonomy taxonomy.qza \
+--p-exclude "k__Eukaryota" \
+--o-filtered-sequences rep-seqs-with-phyla-no-mitochondria-chloroplasts-archaea-eukaryota.qza
+
+# Renaming the long files
+mv table-with-phyla-no-mitochondria-chloroplasts-archaea-eukaryota.qza filtered-table.qza
+
+mv rep-seqs-with-phyla-no-mitochondria-chloroplasts-archaea-eukaryota.qza filtered-rep-seqs.qza
+
+
+# This code aligns the representative sequences, masks the alignment, constructs an unrooted phylogenetic tree, and then roots the tree, outputting each step as separate .qza files.
+
+qiime phylogeny align-to-tree-mafft-fasttree \
+--i-sequences filtered-rep-seqs.qza \
+--o-alignment aligned-rep-seqs.qza \
+--o-masked-alignment masked-aligned-rep-seqs.qza \
+--o-tree unrooted-tree.qza \
+--o-rooted-tree rooted-tree.qza
+
+# The code is generating a summary visualization of the feature table, including sample metadata, and outputs it as a .qzv file.
+
+qiime feature-table summarize \
+--i-table filtered-table.qza \
+--o-visualization filtered-table.qzv \
+--m-sample-metadata-file metadata.txt
+
+
+# The code is calculating core diversity metrics and phylogenetic metrics for the microbial communities at a specified sampling depth of 903 (that i picked) and outputs the results in a directory called diversity-metrics-results.
+
+qiime diversity core-metrics-phylogenetic --i-phylogeny rooted-tree.qza --i-table filtered-table.qza --p-sampling-depth 903 --m-metadata-file metadata.txt --output-dir diversity-metrics-results
+
+
+# This code compares the alpha diversity (Shannon index) across different metadata groups and visualizes the statistical significance in a .qzv file.
+
+qiime diversity alpha-group-significance \
+--i-alpha-diversity diversity-metrics-results/shannon_vector.qza \
+--m-metadata-file metadata.txt \
+--o-visualization diversity-metrics-results/shannon-population-group-significance.qzv
+
+qiime diversity alpha-group-significance \
+--i-alpha-diversity diversity-metrics-results/shannon_vector.qza \
+--m-metadata-file metadata.txt \
+--o-visualization diversity-metrics-results/shannon-sex-group-significance.qzv
+
+qiime diversity alpha-group-significance \
+--i-alpha-diversity diversity-metrics-results/shannon_vector.qza \
+--m-metadata-file metadata.txt \
+--o-visualization diversity-metrics-results/shannon-flock-group-significance.qzv
+
+
+
+# This code compares the alpha diversity (observed features) across different metadata groups and visualizes the statistical significance in a .qzv file.
+
+qiime diversity alpha-group-significance \
+--i-alpha-diversity diversity-metrics-results/observed_features_vector.qza \
+--m-metadata-file metadata.txt \
+--o-visualization diversity-metrics-results/observed-features-population-group-significance.qzv
+
+qiime diversity alpha-group-significance \
+--i-alpha-diversity diversity-metrics-results/observed_features_vector.qza \
+--m-metadata-file metadata.txt \
+--o-visualization diversity-metrics-results/observed-features-sex-group-significance.qzv
+
+qiime diversity alpha-group-significance \
+--i-alpha-diversity diversity-metrics-results/observed_features_vector.qza \
+--m-metadata-file metadata.txt \
+--o-visualization diversity-metrics-results/observed-features-flock-group-significance.qzv
+
+
+# This code performs pairwise statistical comparisons of Bray-Curtis beta diversity distances between different metadata groups and visualizes the significance in a .qzv file.
+
+qiime diversity beta-group-significance \
+  --i-distance-matrix diversity-metrics-results/bray_curtis_distance_matrix.qza \
+  --m-metadata-file metadata.txt \
+  --m-metadata-column flock \
+  --o-visualization diversity-metrics-results/bray-curtis-flock-significance.qzv \
+  --p-pairwise
+
+qiime diversity beta-group-significance \
+  --i-distance-matrix diversity-metrics-results/bray_curtis_distance_matrix.qza \
+  --m-metadata-file metadata.txt \
+  --m-metadata-column sex \
+  --o-visualization diversity-metrics-results/bray-curtis-sex-significance.qzv \
+  --p-pairwise
+
+qiime diversity beta-group-significance \
+  --i-distance-matrix diversity-metrics-results/bray_curtis_distance_matrix.qza \
+  --m-metadata-file metadata.txt \
+  --m-metadata-column population \
+  --o-visualization diversity-metrics-results/bray-curtis-population-significance.qzv \
+  --p-pairwise
+
+
+# for our beta diversity make our Weighted Unifrac distance. This code compares the weighted UniFrac beta diversity distances between different populations, sex, and flock and visualizes the statistical significance of the differences in a .qzv file.
+
+qiime diversity beta-group-significance \
+--i-distance-matrix diversity-metrics-results/weighted_unifrac_distance_matrix.qza \
+--m-metadata-file metadata.txt \
+--m-metadata-column population \
+--o-visualization diversity-metrics-results/weighted-unifrac-population-significance.qzv \
+--p-pairwise
+
+qiime diversity beta-group-significance \
+--i-distance-matrix diversity-metrics-results/weighted_unifrac_distance_matrix.qza \
+--m-metadata-file metadata.txt \
+--m-metadata-column flock \
+--o-visualization diversity-metrics-results/weighted-unifrac-flock-significance.qzv \
+--p-pairwise
+
+qiime diversity beta-group-significance \
+--i-distance-matrix diversity-metrics-results/weighted_unifrac_distance_matrix.qza \
+--m-metadata-file metadata.txt \
+--m-metadata-column sex \
+--o-visualization diversity-metrics-results/weighted-unifrac-sex-significance.qzv \
+--p-pairwise
+
+
+# The code performs differential abundance testing of microbial features across different meta data categories, I am doing it for population, sex, and flock using the ANCOM-BC method, and visualizes the results in a bar plot with significant features highlighted.
+
+#population
+qiime composition ancombc \
+  --i-table filtered-table.qza \
+  --m-metadata-file metadata.txt \
+  --p-formula 'population' \
+  --o-differentials ancombc-population.qza
+
+qiime composition da-barplot \
+  --i-data ancombc-population.qza \
+  --p-significance-threshold 0.05 \
+  --o-visualization da-barplot-population.qzv
+
+#sex
+qiime composition ancombc \
+  --i-table filtered-table.qza \
+  --m-metadata-file metadata.txt \
+  --p-formula 'sex' \
+  --o-differentials ancombc-sex.qza
+
+qiime composition da-barplot \
+  --i-data ancombc-sex.qza \
+  --p-significance-threshold 0.05 \
+  --o-visualization da-barplot-sex.qzv
+
+#flock
+qiime composition ancombc \
+  --i-table filtered-table.qza \
+  --m-metadata-file metadata.txt \
+  --p-formula 'flock' \
+  --o-differentials ancombc-flock.qza
+
+qiime composition da-barplot \
+  --i-data ancombc-flock.qza \
+  --p-significance-threshold 0.05 \
+  --o-visualization da-barplot-flock.qzv
